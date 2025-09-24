@@ -29,7 +29,6 @@ Thumbs.db
 
 # Ignore benchmark results
 results/
-*.json
 benchmark-*.json
 
 # Ignore temporary files
