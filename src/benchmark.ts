@@ -44,7 +44,7 @@ Duration: ${config.testDuration} seconds
 
     try {
       // Step 1: Test server availability
-    //   await this.testServerAvailability(config);
+      await this.testServerAvailability(config);
 
       // Step 2: Run incremental load test
     //   if (config.targetConnections > 1000) {
@@ -245,7 +245,7 @@ Duration: ${config.testDuration} seconds
     const memoryPerConnection = this.results.peakMemoryUsage / this.results.successfulConnections;
     console.log(`├─ Memory per connection: ~${(memoryPerConnection / 1024).toFixed(1)} KB`);
 
-    const theoreticalMax = Math.floor(8 * 1024 * 1024 * 1024 / memoryPerConnection); // 8GB limit
+    const theoreticalMax = Math.floor(2 * 1024 * 1024 * 1024 / memoryPerConnection); // 8GB limit
     console.log(`└─ Theoretical maximum connections: ~${theoreticalMax.toLocaleString()}`);
     console.log('');
   }
@@ -351,8 +351,10 @@ program
   .option('-r, --rate <number>', 'connections per second', '50')
   .option('-d, --duration <number>', 'test duration in seconds', '30')
   .option('-h, --host <string>', 'server host', 'localhost')
-  .option('-p, --port <number>', 'server port', '3000')
+  .option('-p, --port <number>', 'server port', '8002')
   .option('-i, --interval <number>', 'message interval in ms', '1000')
+  .option('--max-retries <number>', 'maximum retry attempts per connection', '3')
+  .option('--retry-delay <number>', 'base delay between retries in ms', '1000')
   .option('-o, --output <string>', 'output file for results')
   .action(async (options) => {
     const config: BenchmarkConfig = {
@@ -363,7 +365,9 @@ program
       messageSize: 1024,
       message: 'Test message from benchmark tool',
       serverHost: options.host,
-      serverPort: parseInt(options.port)
+      serverPort: parseInt(options.port),
+      maxRetries: parseInt(options.maxRetries),
+      retryDelay: parseInt(options.retryDelay)
     };
 
     const benchmark = new SocketBenchmark();
@@ -385,6 +389,8 @@ program
   .description('Run quick tests with preset configurations')
   .option('-h, --host <string>', 'server host', 'localhost')
   .option('-p, --port <number>', 'server port', '3000')
+  .option('--max-retries <number>', 'maximum retry attempts per connection', '3')
+  .option('--retry-delay <number>', 'base delay between retries in ms', '1000')
   .action(async (options) => {
     const tests = [
       { name: '1K Test', connections: 1000, rate: 100 },
@@ -405,7 +411,9 @@ program
         messageSize: 1024,
         message: 'Test message from benchmark tool',
         serverHost: options.host,
-        serverPort: parseInt(options.port)
+        serverPort: parseInt(options.port),
+        maxRetries: parseInt(options.maxRetries || '3'),
+        retryDelay: parseInt(options.retryDelay || '1000')
       };
 
       try {

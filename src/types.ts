@@ -26,6 +26,9 @@ export interface BenchmarkConfig {
   message: string;
   serverHost: string;
   serverPort: number;
+  headers?: Record<string, string>; // Optional headers for authentication
+  maxRetries?: number; // Maximum number of retry attempts (default: 3)
+  retryDelay?: number; // Base delay in ms between retries (default: 1000)
 }
 
 export interface ConnectionResult {
@@ -33,6 +36,8 @@ export interface ConnectionResult {
   connectionTime: number;
   errorMessage?: string;
   socketId?: string;
+  retryCount?: number; // Number of retry attempts made
+  finalAttempt?: boolean; // Whether this was the final attempt
 }
 
 export interface BenchmarkResults {

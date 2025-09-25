@@ -14,7 +14,7 @@
     "test:5k": "node dist/benchmark.js run --connections 5000",
     "test:10k": "node dist/benchmark.js run --connections 10000",
     "test:quick": "node dist/benchmark.js quick",
-    "test:custom": "node dist/benchmark.js run --connections 10000 --interval 200 --duration 120",
+    "test:custom": "node dist/benchmark.js run --connections 10000 --interval 2000 --duration 60 --port 8090 --rate 50",
     "clean": "rm -rf dist"
   },
   "keywords": ["socket.io", "benchmark", "performance", "websocket", "concurrent"],

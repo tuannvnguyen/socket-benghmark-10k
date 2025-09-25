@@ -11,16 +11,76 @@ class SocketClient {
     this.clientId = clientId;
   }
 
-  public async connect(host: string, port: number): Promise<ConnectionResult> {
-    const startTime = Date.now();
+  public async connect(host: string, port: number, headers?: Record<string, string>, maxRetries: number = 3, retryDelay: number = 1000): Promise<ConnectionResult> {
+    const overallStartTime = Date.now();
+    let lastError = '';
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const isFirstAttempt = attempt === 0;
+      const isFinalAttempt = attempt === maxRetries;
+      
+      if (!isFirstAttempt) {
+        // Calculate exponential backoff delay: base * 2^(attempt-1)
+        const delay = retryDelay * Math.pow(2, attempt - 1);
+        console.log(`🔄 Retry attempt ${attempt}/${maxRetries} for client ${this.clientId} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      try {
+        const attemptResult = await this.attemptConnection(host, port, headers, overallStartTime);
+        
+        if (attemptResult.success) {
+          return {
+            ...attemptResult,
+            retryCount: attempt,
+            finalAttempt: isFinalAttempt
+          };
+        } else {
+          lastError = attemptResult.errorMessage || 'Unknown error';
+          if (!isFinalAttempt) {
+            // Clean up failed socket before retry
+            this.cleanup();
+          }
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error';
+        if (!isFinalAttempt) {
+          this.cleanup();
+        }
+      }
+    }
+
+    // All attempts failed
+    return {
+      success: false,
+      connectionTime: Date.now() - overallStartTime,
+      errorMessage: `Failed after ${maxRetries + 1} attempts. Last error: ${lastError}`,
+      retryCount: maxRetries,
+      finalAttempt: true
+    };
+  }
+
+  private async attemptConnection(host: string, port: number, headers?: Record<string, string>, overallStartTime?: number): Promise<ConnectionResult> {
+    const startTime = overallStartTime || Date.now();
     
     try {
-      this.socket = io(`http://${host}:${port}`, {
+      const socketOptions: any = {
+        path: '/socket.io',
         transports: ['websocket', 'polling'],
         timeout: 10000,
         reconnection: false,
         forceNew: true
-      });
+      };
+
+      // Add headers if provided
+      if (headers) {
+        socketOptions.extraHeaders = headers;
+        // Also add to auth for Socket.IO authentication
+        socketOptions.auth = headers;
+      }
+
+      const namespace = '/load-test'; // Use root namespace; change if needed
+      this.socket = io(`http://${host}:${port}${namespace}`, socketOptions);
 
       return new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
@@ -29,7 +89,7 @@ class SocketClient {
             connectionTime: Date.now() - startTime,
             errorMessage: 'Connection timeout'
           });
-        }, 15000);
+        }, 90000);
 
         this.socket!.on('connect', () => {
           clearTimeout(timeoutId);
@@ -66,6 +126,16 @@ class SocketClient {
     }
   }
 
+  private cleanup(): void {
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    this.connected = false;
+    this.connectionTime = 0;
+  }
+
   public sendPing(): Promise<number> {
     if (!this.socket || !this.connected) {
       return Promise.reject(new Error('Not connected'));
@@ -98,10 +168,10 @@ class SocketClient {
         reject(new Error('Test message timeout'));
       }, 5000);
 
-      this.socket!.emit('test-message', data);
+      this.socket!.emit('broadcast', data);
       
-      this.socket!.once('test-response', (response) => {
-        console.log('Response:', response);
+      this.socket!.once('broadcast', (response) => {
+        // console.log('Response:', response);
         clearTimeout(timeoutId);
         resolve(response);
       });
@@ -187,7 +257,20 @@ class ConnectionTester {
     this.clients.push(client);
 
     try {
-      const result = await client.connect(this.config.serverHost, this.config.serverPort);
+      const headers: Record<string, string> = {};
+      headers.authorization = `Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3MTE5ODM3NjY0MzI0MzU0MDQ4IiwianRpIjoiODFhMjU4ZjgtNTdjMi00ODlmLThkOWYtYjMxYzllN2ZjZjU2IiwicnRqdGkiOiJjYTA0MTQ2Mi1iZjI5LTQ2ODMtYWI1NC1lYjVlZGQwMGZlZmYiLCJhdWQiOiIxMTExMDAwMCIsImlhdCI6MTc1ODgxNDU3MSwiZXhwIjoxNzU4ODU3NzcxfQ.RhToNqNIFsvJOVawkGo-Cg3yCntPl3KoGOkxXRENYkn0Z_gFbBZiXFqM5jLa8myfCP_OxYDGBMyhg0eR4gsomGn640EcIR8T2s7I0W1QFa0avjoaP-K-SuSm52gKBDNQx7d6Wn1iCGFNtgrvrvuoG_NUqy9tKnsY2kRSLpHfFPqopidjHUXAdGhMbEVY9AgP2NB1DjfRRa_ISAQvTL60hxXVK8jDU0wuXau16vOp6irSNjbx03Iz7xpiIDq822Tjf-wfM0RWM7jBH2eCXVxmA-JJggFc-E7Gw-xbi0ZtQ3nRG3Sf6Xuw3ZY8fIRt8GwtgB8cpcbUHMFaXbEUZOGOczoMeQV-Uw2e002VUxX2Ac1f7_UxP7W3KBbxaGZLSOP97ciDy4u_aa7_oseXofUBLvN-OwQhP7x0O8hIGHWXLOy0xpu8xqwYnFPygLYRmq2kqjgneURxOrB6sXnHcw7HAs73CRoM0-bdG6cGK2tgiXfgD4asU3RcC-W9qqOUtPawil8tjiC2xDfW6bCVMOmMp4TOBVsca1f4p8IqFKZWysD500Q-wwBSe3qjOIUnoMBFlNu2fE55wfHTAGdvtZMJbnc7gyb5ee4V5UGlWkwCiBc2Bs7IEGecupTqFwLg6x41C-bahqgaYqQn15jDohrSxDl0B8jmcG2HElI4jKcnIfQ`;
+      headers.companyid = '11110000';
+      
+      const maxRetries = this.config.maxRetries || 3;
+      const retryDelay = this.config.retryDelay || 1000;
+      
+      const result = await client.connect(
+        this.config.serverHost, 
+        this.config.serverPort, 
+        this.config.headers || headers,
+        maxRetries,
+        retryDelay
+      );
       this.results.push(result);
 
       if (result.success) {
@@ -195,6 +278,11 @@ class ConnectionTester {
           const successful = this.results.filter(r => r.success).length;
           const failed = this.results.filter(r => !r.success).length;
           console.log(`Progress: ${this.results.length}/${this.config.targetConnections} (✅ ${successful}, ❌ ${failed})`);
+        }
+        
+        // Log successful connection with retry info
+        if ((result.retryCount || 0) > 0) {
+          console.log(`✅ Connection ${index} succeeded after ${result.retryCount} retries`);
         }
       } else {
         console.log(`❌ Connection ${index} failed: ${result.errorMessage}`);
@@ -204,7 +292,9 @@ class ConnectionTester {
       this.results.push({
         success: false,
         connectionTime: 0,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        retryCount: this.config.maxRetries || 3,
+        finalAttempt: true
       });
     }
   }
@@ -261,6 +351,11 @@ class ConnectionTester {
     const successful = this.results.filter(r => r.success);
     const failed = this.results.filter(r => !r.success);
     const avgConnectionTime = successful.reduce((sum, r) => sum + r.connectionTime, 0) / successful.length;
+    
+    // Retry statistics
+    const connectionsWithRetries = this.results.filter(r => (r.retryCount || 0) > 0);
+    const totalRetries = this.results.reduce((sum, r) => sum + (r.retryCount || 0), 0);
+    const successAfterRetries = successful.filter(r => (r.retryCount || 0) > 0);
 
     console.log(`
 ┌─────────────────────────────────────────────────────────────┐
@@ -269,6 +364,11 @@ class ConnectionTester {
 │ Target Connections: ${this.config.targetConnections.toString().padStart(8)} │ Success Rate: ${((successful.length / this.results.length) * 100).toFixed(1).padStart(6)}% │
 │ Successful:         ${successful.length.toString().padStart(8)} │ Failed:       ${failed.length.toString().padStart(8)} │
 │ Avg Connection Time: ${avgConnectionTime.toFixed(0).padStart(7)}ms │                       │
+├─────────────────────────────────────────────────────────────┤
+│ RETRY STATISTICS                                            │
+├─────────────────────────────────────────────────────────────┤
+│ Connections w/ Retries: ${connectionsWithRetries.length.toString().padStart(5)} │ Total Retries: ${totalRetries.toString().padStart(8)} │
+│ Success after Retry:    ${successAfterRetries.length.toString().padStart(5)} │ Max Retries:   ${(this.config.maxRetries || 3).toString().padStart(8)} │
 └─────────────────────────────────────────────────────────────┘
     `);
 
@@ -282,6 +382,19 @@ class ConnectionTester {
 
       Object.entries(errorCounts).forEach(([error, count]) => {
         console.log(`   ${error}: ${count} occurrences`);
+      });
+    }
+
+    if (connectionsWithRetries.length > 0) {
+      console.log('\n🔄 Retry Statistics:');
+      const retryDistribution = connectionsWithRetries.reduce((acc, result) => {
+        const retries = result.retryCount || 0;
+        acc[retries] = (acc[retries] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+
+      Object.entries(retryDistribution).forEach(([retries, count]) => {
+        console.log(`   ${retries} retries: ${count} connections`);
       });
     }
   }
@@ -300,7 +413,9 @@ if (require.main === module) {
     messageSize: 1024,
     message: 'Test message from client - custom',
     serverHost: process.env.SERVER_HOST || 'localhost',
-    serverPort: parseInt(process.env.SERVER_PORT || '3000')
+    serverPort: parseInt(process.env.SERVER_PORT || '3000'),
+    maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
+    retryDelay: parseInt(process.env.RETRY_DELAY || '1000')
   };
 
   const tester = new ConnectionTester(config);
