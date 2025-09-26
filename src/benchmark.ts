@@ -352,22 +352,24 @@ program
   .option('-d, --duration <number>', 'test duration in seconds', '30')
   .option('-h, --host <string>', 'server host', 'localhost')
   .option('-p, --port <number>', 'server port', '8002')
-  .option('-i, --interval <number>', 'message interval in ms', '1000')
+  .option('-i, --interval <number>', 'message interval in seconds', '1')
   .option('--max-retries <number>', 'maximum retry attempts per connection', '3')
-  .option('--retry-delay <number>', 'base delay between retries in ms', '1000')
+  .option('--retry-delay <number>', 'base delay between retries in seconds', '1')
   .option('-o, --output <string>', 'output file for results')
   .action(async (options) => {
     const config: BenchmarkConfig = {
       targetConnections: parseInt(options.connections),
       connectionRate: parseInt(options.rate),
       testDuration: parseInt(options.duration),
-      messageInterval: parseInt(options.interval),
+      messageInterval: parseInt(options.interval)*1000, // Convert to ms
       messageSize: 1024,
       message: 'Test message from benchmark tool',
       serverHost: options.host,
       serverPort: parseInt(options.port),
       maxRetries: parseInt(options.maxRetries),
-      retryDelay: parseInt(options.retryDelay)
+      retryDelay: parseInt(options.retryDelay)*1000, // Convert to ms
+      companyId: process.env.COMPANY_ID || '11110000',
+      token: process.env.AUTH_TOKEN || 'your_token_here'
     };
 
     const benchmark = new SocketBenchmark();
@@ -413,7 +415,9 @@ program
         serverHost: options.host,
         serverPort: parseInt(options.port),
         maxRetries: parseInt(options.maxRetries || '3'),
-        retryDelay: parseInt(options.retryDelay || '1000')
+        retryDelay: parseInt(options.retryDelay || '1000'),
+        companyId: process.env.COMPANY_ID || '11110000',
+        token: process.env.AUTH_TOKEN || 'your_token_here'
       };
 
       try {

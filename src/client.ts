@@ -166,7 +166,7 @@ class SocketClient {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Test message timeout'));
-      }, 5000);
+      }, 10000);
 
       this.socket!.emit('broadcast', data);
       
@@ -258,8 +258,8 @@ class ConnectionTester {
 
     try {
       const headers: Record<string, string> = {};
-      headers.authorization = `Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3MTE5ODM3NjY0MzI0MzU0MDQ4IiwianRpIjoiODFhMjU4ZjgtNTdjMi00ODlmLThkOWYtYjMxYzllN2ZjZjU2IiwicnRqdGkiOiJjYTA0MTQ2Mi1iZjI5LTQ2ODMtYWI1NC1lYjVlZGQwMGZlZmYiLCJhdWQiOiIxMTExMDAwMCIsImlhdCI6MTc1ODgxNDU3MSwiZXhwIjoxNzU4ODU3NzcxfQ.RhToNqNIFsvJOVawkGo-Cg3yCntPl3KoGOkxXRENYkn0Z_gFbBZiXFqM5jLa8myfCP_OxYDGBMyhg0eR4gsomGn640EcIR8T2s7I0W1QFa0avjoaP-K-SuSm52gKBDNQx7d6Wn1iCGFNtgrvrvuoG_NUqy9tKnsY2kRSLpHfFPqopidjHUXAdGhMbEVY9AgP2NB1DjfRRa_ISAQvTL60hxXVK8jDU0wuXau16vOp6irSNjbx03Iz7xpiIDq822Tjf-wfM0RWM7jBH2eCXVxmA-JJggFc-E7Gw-xbi0ZtQ3nRG3Sf6Xuw3ZY8fIRt8GwtgB8cpcbUHMFaXbEUZOGOczoMeQV-Uw2e002VUxX2Ac1f7_UxP7W3KBbxaGZLSOP97ciDy4u_aa7_oseXofUBLvN-OwQhP7x0O8hIGHWXLOy0xpu8xqwYnFPygLYRmq2kqjgneURxOrB6sXnHcw7HAs73CRoM0-bdG6cGK2tgiXfgD4asU3RcC-W9qqOUtPawil8tjiC2xDfW6bCVMOmMp4TOBVsca1f4p8IqFKZWysD500Q-wwBSe3qjOIUnoMBFlNu2fE55wfHTAGdvtZMJbnc7gyb5ee4V5UGlWkwCiBc2Bs7IEGecupTqFwLg6x41C-bahqgaYqQn15jDohrSxDl0B8jmcG2HElI4jKcnIfQ`;
-      headers.companyid = '11110000';
+      headers.authorization = this.config.token;
+      headers.companyid = this.config.companyId;
       
       const maxRetries = this.config.maxRetries || 3;
       const retryDelay = this.config.retryDelay || 1000;
@@ -415,7 +415,9 @@ if (require.main === module) {
     serverHost: process.env.SERVER_HOST || 'localhost',
     serverPort: parseInt(process.env.SERVER_PORT || '3000'),
     maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
-    retryDelay: parseInt(process.env.RETRY_DELAY || '1000')
+    retryDelay: parseInt(process.env.RETRY_DELAY || '1000'),
+    companyId: process.env.COMPANY_ID || '11110000',
+    token: process.env.AUTH_TOKEN || 'your_token_here'
   };
 
   const tester = new ConnectionTester(config);

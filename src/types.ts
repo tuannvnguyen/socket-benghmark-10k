@@ -29,6 +29,8 @@ export interface BenchmarkConfig {
   headers?: Record<string, string>; // Optional headers for authentication
   maxRetries?: number; // Maximum number of retry attempts (default: 3)
   retryDelay?: number; // Base delay in ms between retries (default: 1000)
+  companyId: string;
+  token: string;
 }
 
 export interface ConnectionResult {
