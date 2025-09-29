@@ -47,9 +47,9 @@ Duration: ${config.testDuration} seconds
       await this.testServerAvailability(config);
 
       // Step 2: Run incremental load test
-    //   if (config.targetConnections > 1000) {
-    //     await this.runIncrementalTest(config);
-    //   }
+      if (config.targetConnections > 1000) {
+        await this.runIncrementalTest(config);
+      }
 
       // Step 3: Run main benchmark
       const connectionResults = await this.runMainBenchmark(config);

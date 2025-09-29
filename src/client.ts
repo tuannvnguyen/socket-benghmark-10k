@@ -67,7 +67,7 @@ class SocketClient {
       const socketOptions: any = {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
-        timeout: 10000,
+        timeout: 30000,
         reconnection: false,
         forceNew: true
       };
@@ -212,6 +212,11 @@ class ConnectionTester {
     `);
 
     const startTime = Date.now();
+    
+    /**
+     * Simulate realword scenario by staggering connection attempts
+     */
+    /**
     const connectionPromises: Promise<void>[] = [];
     
     // Create connections with rate limiting
@@ -230,6 +235,25 @@ class ConnectionTester {
 
     // Wait for all connections to complete
     await Promise.all(connectionPromises);
+    */
+
+    // Testing Connection by chunks to avoid overwhelming the server
+    const chunkSize = this.config.connectionRate; // Number of connections to create per chunk
+    for (let i = 0; i < this.config.targetConnections; i += chunkSize) {
+      const chunkPromises: Promise<void>[] = [];
+      
+      for (let j = 0; j < chunkSize && (i + j) < this.config.targetConnections; j++) {
+        chunkPromises.push(this.createConnection(i + j));
+      }
+      
+      // Wait for the current chunk to complete
+      await Promise.all(chunkPromises);
+      
+      // Wait 1 second before starting the next chunk to respect the connection rate
+      if ((i + chunkSize) < this.config.targetConnections) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     
     const connectionPhaseEnd = Date.now();
     console.log(`\n✅ Connection phase completed in ${(connectionPhaseEnd - startTime) / 1000}s`);
@@ -282,13 +306,13 @@ class ConnectionTester {
         
         // Log successful connection with retry info
         if ((result.retryCount || 0) > 0) {
-          console.log(`✅ Connection ${index} succeeded after ${result.retryCount} retries`);
+          // console.log(`✅ Connection ${index} succeeded after ${result.retryCount} retries`);
         }
       } else {
-        console.log(`❌ Connection ${index} failed: ${result.errorMessage}`);
+        // console.log(`❌ Connection ${index} failed: ${result.errorMessage}`);
       }
     } catch (error) {
-      console.error(`❌ Error creating connection ${index}:`, error);
+      // console.error(`❌ Error creating connection ${index}:`, error);
       this.results.push({
         success: false,
         connectionTime: 0,
@@ -317,7 +341,7 @@ class ConnectionTester {
           await client.sendTestMessage({ content: this.config.message, size: this.config.messageSize, timestamp: Date.now() });
         } catch (error) {
           // Ignore ping errors during stress test
-          console.log(`⚠️  Ping error for ${client['clientId']}:`, error);
+          // console.log(`⚠️  Ping error for ${client['clientId']}:`, error);
         }
       }
     }, this.config.messageInterval);
