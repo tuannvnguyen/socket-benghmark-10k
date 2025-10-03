@@ -34,9 +34,13 @@ Duration: ${config.testDuration} seconds
       totalDuration: 0,
       successfulConnections: 0,
       failedConnections: 0,
+      activeConnections: 0,
+      disconnectedConnections: 0,
+      spontaneousDisconnections: 0,
       maxConcurrentConnections: 0,
       averageConnectionTime: 0,
       connectionSuccessRate: 0,
+      connectionRetentionRate: 0,
       peakMemoryUsage: 0,
       peakCpuUsage: 0,
       errors: []
@@ -46,30 +50,36 @@ Duration: ${config.testDuration} seconds
       // Step 1: Test server availability
       await this.testServerAvailability(config);
 
-      // Step 2: Run incremental load test
-      if (config.targetConnections > 1000) {
-        await this.runIncrementalTest(config);
-      }
+      // Step 2: Run incremental load test 
+      // if (config.targetConnections > 1000) {
+        //await this.runIncrementalTest(config);
+      //}
 
       // Step 3: Run main benchmark
-      const connectionResults = await this.runMainBenchmark(config);
+      const benchmarkResult = await this.runMainBenchmark(config);
+      const connectionResults = benchmarkResult.results;
+      const tester = benchmarkResult.tester;
 
       // Step 4: Analyze results
-      this.analyzeResults(connectionResults, startTime);
+      this.analyzeResults(connectionResults, startTime, tester);
 
       // Step 5: Generate report
       this.generateReport();
 
     } catch (error) {
       console.error(chalk.red('❌ Benchmark failed:'), error);
-      this.results.errors.push(error instanceof Error ? error.message : 'Unknown error');
+      if (this.results) {
+        this.results.errors.push(error instanceof Error ? error.message : 'Unknown error');
+      }
     } finally {
       this.performanceTracker.stopTracking();
-      this.results.endTime = new Date();
-      this.results.totalDuration = (this.results.endTime.getTime() - startTime.getTime()) / 1000;
+      if (this.results) {
+        this.results.endTime = new Date();
+        this.results.totalDuration = (this.results.endTime.getTime() - startTime.getTime()) / 1000;
+      }
     }
 
-    return this.results;
+    return this.results!;
   }
 
   private async testServerAvailability(config: BenchmarkConfig): Promise<void> {
@@ -143,7 +153,7 @@ Duration: ${config.testDuration} seconds
     }
   }
 
-  private async runMainBenchmark(config: BenchmarkConfig): Promise<ConnectionResult[]> {
+  private async runMainBenchmark(config: BenchmarkConfig): Promise<{ tester: ConnectionTester; results: ConnectionResult[] }> {
     console.log(chalk.blue('\n🚀 Running main benchmark test...'));
     
     const tester = new ConnectionTester(config);
@@ -153,23 +163,44 @@ Duration: ${config.testDuration} seconds
     const successfulConnections = results.filter(r => r.success).length;
     this.performanceTracker.recordConnection(successfulConnections);
 
-    return results;
+    return { tester, results };
   }
 
-  private analyzeResults(connectionResults: ConnectionResult[], startTime: Date): void {
+  private analyzeResults(connectionResults: ConnectionResult[], startTime: Date, tester?: ConnectionTester): void {
     if (!this.results) return;
 
     const successful = connectionResults.filter(r => r.success);
     const failed = connectionResults.filter(r => !r.success);
+    const active = connectionResults.filter(r => r.success && r.isActive);
+    const disconnected = connectionResults.filter(r => r.success && !r.isActive);
+    const spontaneousDisconnects = connectionResults.filter(r => r.spontaneousDisconnect);
 
+    // Use initial successful connections for setup metrics
     this.results.successfulConnections = successful.length;
     this.results.failedConnections = failed.length;
-    this.results.maxConcurrentConnections = successful.length;
+    
+    // Use current active connections for final results
+    this.results.activeConnections = active.length;
+    this.results.disconnectedConnections = disconnected.length;
+    this.results.spontaneousDisconnections = spontaneousDisconnects.length;
+    
+    this.results.maxConcurrentConnections = successful.length; // Peak during test
     this.results.connectionSuccessRate = (successful.length / connectionResults.length) * 100;
+    this.results.connectionRetentionRate = successful.length > 0 ? (active.length / successful.length) * 100 : 0;
     
     if (successful.length > 0) {
       this.results.averageConnectionTime = 
         successful.reduce((sum, r) => sum + r.connectionTime, 0) / successful.length;
+    }
+
+    // Get connection statistics if tester is available
+    if (tester) {
+      const connectionStats = tester.getConnectionStats();
+      console.log(chalk.blue('\n📊 Real-time Connection Statistics:'));
+      console.log(`├─ Active Connections: ${connectionStats.active}`);
+      console.log(`├─ Disconnected: ${connectionStats.disconnected}`);
+      console.log(`├─ Spontaneous Disconnections: ${connectionStats.spontaneousDisconnections}`);
+      console.log(`└─ Connection Retention: ${((connectionStats.active / Math.max(connectionStats.successful, 1)) * 100).toFixed(1)}%`);
     }
 
     // Get system metrics
@@ -194,7 +225,9 @@ Duration: ${config.testDuration} seconds
     // Connection Results
     console.log(chalk.white.bold('CONNECTION RESULTS:'));
     console.log(`├─ Target Connections: ${this.results.config.targetConnections.toLocaleString()}`);
-    console.log(`├─ Successful: ${chalk.green(this.results.successfulConnections.toLocaleString())} (${this.results.connectionSuccessRate.toFixed(1)}%)`);
+    console.log(`├─ Initial Successful: ${chalk.green(this.results.successfulConnections.toLocaleString())} (${this.results.connectionSuccessRate.toFixed(1)}%)`);
+    console.log(`├─ Currently Active: ${chalk.green.bold(this.results.activeConnections.toLocaleString())} (${this.results.connectionRetentionRate.toFixed(1)}% retention)`);
+    console.log(`├─ Disconnected: ${chalk.yellow(this.results.disconnectedConnections.toLocaleString())} (${this.results.spontaneousDisconnections} spontaneous)`);
     console.log(`├─ Failed: ${chalk.red(this.results.failedConnections.toLocaleString())} (${(100 - this.results.connectionSuccessRate).toFixed(1)}%)`);
     console.log(`└─ Average Connection Time: ${this.results.averageConnectionTime.toFixed(0)}ms\n`);
 
@@ -203,7 +236,8 @@ Duration: ${config.testDuration} seconds
     console.log(`├─ Peak Memory Usage: ${(this.results.peakMemoryUsage / 1024 / 1024).toFixed(1)} MB`);
     console.log(`├─ Peak CPU Usage: ${this.results.peakCpuUsage.toFixed(1)}%`);
     console.log(`├─ Test Duration: ${this.results.totalDuration.toFixed(1)}s`);
-    console.log(`└─ Connection Rate: ${(this.results.successfulConnections / this.results.totalDuration).toFixed(1)} connections/s\n`);
+    console.log(`├─ Initial Connection Rate: ${(this.results.successfulConnections / this.results.totalDuration).toFixed(1)} connections/s`);
+    console.log(`└─ Final Active Rate: ${(this.results.activeConnections / this.results.totalDuration).toFixed(1)} active connections/s\n`);
 
     // System Recommendations
     this.generateRecommendations();

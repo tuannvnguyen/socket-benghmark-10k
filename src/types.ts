@@ -40,6 +40,11 @@ export interface ConnectionResult {
   socketId?: string;
   retryCount?: number; // Number of retry attempts made
   finalAttempt?: boolean; // Whether this was the final attempt
+  isActive?: boolean; // Current connection status
+  disconnectedAt?: Date; // When the connection was lost (if applicable)
+  disconnectionReason?: string; // Reason for disconnection
+  connectionDuration?: number; // How long the connection lasted (ms)
+  spontaneousDisconnect?: boolean; // Whether it disconnected on its own
 }
 
 export interface BenchmarkResults {
@@ -49,9 +54,13 @@ export interface BenchmarkResults {
   totalDuration: number;
   successfulConnections: number;
   failedConnections: number;
+  activeConnections: number; // Connections still alive at end of test
+  disconnectedConnections: number; // Connections that dropped during test
+  spontaneousDisconnections: number; // Unexpected disconnections
   maxConcurrentConnections: number;
   averageConnectionTime: number;
   connectionSuccessRate: number;
+  connectionRetentionRate: number; // % of successful connections still active
   peakMemoryUsage: number;
   peakCpuUsage: number;
   errors: string[];
